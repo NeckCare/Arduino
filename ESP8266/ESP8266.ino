@@ -33,9 +33,9 @@ void processJsonData(){
     server.begin();
     JsonObject& resp = jsonBuffer.createObject();
     resp["type"] = "init";
-    resp["ip"] = String(myIp);
+    resp["ip"] = myIp.toString();
     resp.printTo(Serial);
-    Serial.print(10);
+    Serial.print("\n");
     //response to the UNO
   }
 }
@@ -56,5 +56,6 @@ void setup() {
 }
 
 void loop() {
+  server.handleClient();
   readJsonDataFromSerial();
 }
