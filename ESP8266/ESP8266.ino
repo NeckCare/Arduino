@@ -22,7 +22,7 @@ void handleRoot(){
 
 void processJsonData(){
   //start process
-  StaticJsonBuffer<200> jsonBuffer;
+  StaticJsonBuffer<256> jsonBuffer;
   JsonObject& root = jsonBuffer.parseObject(jsonData);
   jsonData = "";
   if(root["type"].as<String>() == "init" && !inited){//Got SSID and pass!
