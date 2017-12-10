@@ -21,6 +21,7 @@ const int flexSensorPin = A0;
 const int sdCardPin = 10;
 
 int flexSensor;
+bool inited = false;
 
 void printToSecLine(String str){
   lcd.setCursor(0, 1);
@@ -35,8 +36,9 @@ String jsonData = "";
 
 void readJsonDataFromSerial(){
   while(wifi.available()){
-    char info = char(wifi.read());
-    Serial.print(info);
+    byte in = wifi.read();
+    Serial.print(in);
+    char info = char(in);
     if(info == 10){//Got the \n
       processJsonData();
     } else {
@@ -47,40 +49,96 @@ void readJsonDataFromSerial(){
 
 void processJsonData(){
   //start process
-  StaticJsonBuffer<200> jsonBuffer;
+  StaticJsonBuffer<256> jsonBuffer;
   JsonObject& root = jsonBuffer.parseObject(jsonData);
   jsonData = "";
-  if(root["type"].as<String>() == "init"){//Got init result
+  String type = root["type"].as<String>();
+  if(type == "init"){//Got init result
+    //format: ip: String
     printToSecLine(root["ip"].as<String>());
+  }
+  if(type == "req"){//Receive http request from ESP8266
+    //format: page: String, "/data?type=all", "/time"
+    String page = root["page"].as<String>();
+
+    StaticJsonBuffer<256> jsonResponse;
+    JsonObject& resp = jsonResponse.createObject();
+    resp["type"] = "resp";
+    resp["body"] = millis();
+    resp.printTo(wifi);
+    wifi.print("\n");
   }
 }
 
+void readFlexSensor(){
+  flexSensor = analogRead(flexSensorPin);
+}
+
+String ssid = "";
+String pass = "";
+
 void setup(){
   Serial.begin(115200);
-  wifi.begin(115200);
+  wifi.begin(115200);//Maybe too high
+  //cannot receive full info from ESP8266 or the info is in wrong coding format
   lcd.init();
   lcd.backlight();
-  printHeader();
-  printToSecLine("Initiating...");
   //Init Micro SD card
-  SD.begin(sdCardPin);
-  //Send SSID & password to ESP8266
-  StaticJsonBuffer<200> jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();
-  root["type"] = "init";
-  root["ssid"] = "NeckCare-v1.0";
-  root["pass"] = "neckcare";
-  root.printTo(wifi);
-  wifi.print("\n");//\n
-  //Send data done
-  delay(1000);
-  lcd.clear();
-  printHeader();
+  if(SD.begin(sdCardPin)){
+    File conf;
+    if(SD.exists("config.txt")){
+      conf = SD.open("config.txt");
+      String configuration = "";
+      while(conf.available()){
+        char chr = char(conf.read());
+        if(chr == 10){
+          if(ssid.equals("")){
+            ssid = configuration;
+          } else {
+            pass = configuration;
+          }
+          configuration = "";
+        } else {
+          configuration += chr;
+        }
+      }
+      Serial.println(ssid);
+      Serial.println(pass);
+    } else {
+      conf = SD.open("config.txt", FILE_WRITE);
+      ssid = "NeckCareAP";
+      pass = "neckcare";
+      conf.print(ssid + "\n");
+      conf.print(pass + "\n");
+    }
+    conf.close();
+  }
 }
 
 void loop(){
+  if(!inited){
+    inited = true;
+    printHeader();
+    //Send SSID & password to ESP8266
+    StaticJsonBuffer<256> jsonBuffer;
+    JsonObject& root = jsonBuffer.createObject();
+    root["type"] = "init";
+    root["ssid"] = ssid;
+    root["pass"] = pass;
+    root.printTo(wifi);
+    wifi.print("\n");//\n
+    //Send data done
+    printToSecLine(ssid);
+    delay(3000);
+    lcd.clear();
+    printHeader();
+    printToSecLine(pass);
+    delay(3000);
+    lcd.clear();
+    printHeader();
+  }
   readJsonDataFromSerial();
-  flexSensor = analogRead(flexSensorPin);
+  readFlexSensor();
   printToSecLine(String(flexSensor));
 }
 

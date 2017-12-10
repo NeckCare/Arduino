@@ -17,7 +17,31 @@ String jsonData = "";
 IPAddress myIp;
 
 void handleRoot(){
-  server.send(200, "text/html", "<h1>You are connected</h1>");
+  sendHttpRequest("/");
+  StaticJsonBuffer<512> jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(getHttpResponse());
+  server.send(200, "text/html", root["body"].as<char*>());
+}
+
+void sendHttpRequest(String page){
+  StaticJsonBuffer<256> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["type"] = "req";
+  root["page"] = page;
+  root.printTo(Serial);
+  Serial.print("\n");
+}
+
+String getHttpResponse(){
+  String data = "";
+  while(Serial.available()){
+    char info = char(Serial.read());
+    if(info == 10){//Got the \n
+      return data;
+    } else {
+      data += info;
+    }
+  }
 }
 
 void processJsonData(){
@@ -25,7 +49,8 @@ void processJsonData(){
   StaticJsonBuffer<256> jsonBuffer;
   JsonObject& root = jsonBuffer.parseObject(jsonData);
   jsonData = "";
-  if(root["type"].as<String>() == "init" && !inited){//Got SSID and pass!
+  String type = root["type"].as<String>();
+  if(type == "init" && !inited){//Got SSID and pass!
     inited = true;
     WiFi.softAP(root["ssid"].as<char*>(), root["pass"].as<char*>());
     myIp = WiFi.softAPIP();
@@ -52,7 +77,7 @@ void readJsonDataFromSerial(){
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200);//Maybe too high
 }
 
 void loop() {
