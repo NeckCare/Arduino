@@ -37,8 +37,6 @@ String jsonData = "";
 void readJsonDataFromSerial(){
   while(bt.available()){
     char info = char(bt.read());
-    Serial.print(info);
-    Serial.println(byte(info));
     if(info == 13){
       //do nothing! \r
     } else if(info == 10){//Got the \n
@@ -61,6 +59,20 @@ void processJsonData(){
     root["data"] = flexSensor;
     root.printTo(bt);
     bt.print("\n");
+  } else if(type == "set"){
+    JsonObject& response = jsonBuffer.createObject();
+    response["type"] = "set_result";
+    if(root.containsKey("bl")){//backlight
+      bool bl = root["bl"].as<bool>();
+      if(bl){
+        lcd.backlight();
+      } else {
+        lcd.noBacklight();
+      }
+      response["bl"] = true;
+    }
+    response.printTo(bt);
+    bt.print("\n");
   }
 }
 
@@ -70,11 +82,12 @@ void readFlexSensor(){
 
 void setup(){
   Serial.begin(115200);
-  bt.begin(38400);
-  Serial.println(PROG_NAME + " " + VERSION);
   lcd.init();
   lcd.backlight();
   printHeader();
+  bt.begin(38400);
+  while(!bt){;}
+  Serial.println(PROG_NAME + " " + VERSION);
 }
 
 void loop(){
