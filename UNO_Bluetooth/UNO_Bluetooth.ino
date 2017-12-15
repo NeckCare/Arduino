@@ -10,6 +10,8 @@
 #include <ArduinoJson.h>
 #include <SPI.h>
 #include <SD.h>
+#define PT_USE_TIMER
+#include <pt.h>
 
 LiquidCrystal_I2C lcd(0x3F, 16, 4);
 SoftwareSerial bt(3, 2);//RX, TX
@@ -19,9 +21,17 @@ const String VERSION = "v1.0";
 
 const int flexSensorPin = A0;
 const int sdCardPin = 10;
+const int ledPin = 4;
+const int buzzerPin = 5;
 
-int flexSensor;
-bool inited = false;
+static struct pt ledTask, mainTask;
+
+int timeNotMoveLimit = 5;//30s not moving
+int minMoveFlex = 30;
+
+long timeNotMoveStartFrom = 0;
+int lastFlex = 0;
+bool isWarning = false;
 
 void printToSecLine(String str){
   lcd.setCursor(0, 1);
@@ -56,7 +66,7 @@ void processJsonData(){
   jsonData = "";
   String type = root["type"].as<String>();
   if(type == "flex"){
-    root["data"] = flexSensor;
+    root["data"] = lastFlex;
     root.printTo(bt);
     bt.print("\n");
   } else if(type == "set"){
@@ -76,8 +86,33 @@ void processJsonData(){
   }
 }
 
-void readFlexSensor(){
-  flexSensor = analogRead(flexSensorPin);
+static int processFlex(struct pt *pt){
+  PT_BEGIN(pt);
+  while(1){
+    int flex = analogRead(flexSensorPin);
+    if(abs(flex - lastFlex) >= minMoveFlex){
+      timeNotMoveStartFrom = millis();
+    }
+    if((millis() - timeNotMoveStartFrom) > (timeNotMoveLimit * 1000)){
+      digitalWrite(ledPin, HIGH);
+    } else {
+      digitalWrite(ledPin, LOW);
+    }
+    lastFlex = flex;
+    PT_TIMER_DELAY(pt, 1000);
+    PT_YIELD(pt);
+  }
+  PT_END(pt);
+}
+
+static int ledEntry(struct pt *pt){
+  PT_BEGIN(pt);
+  while(1){
+    digitalWrite(ledPin, !digitalRead(ledPin));
+    PT_TIMER_DELAY(pt, 500);
+    PT_YIELD(pt);
+  }
+  PT_END(pt);
 }
 
 void setup(){
@@ -87,12 +122,15 @@ void setup(){
   printHeader();
   bt.begin(38400);
   while(!bt){;}
+  pinMode(ledPin, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
   Serial.println(PROG_NAME + " " + VERSION);
 }
 
 void loop(){
+  //ledEntry(&ledTask);
+  processFlex(&mainTask);
   readJsonDataFromSerial();
-  readFlexSensor();
-  printToSecLine(String(flexSensor));
+  printToSecLine(String(lastFlex) + " " + String(timeNotMoveStartFrom));
 }
 
