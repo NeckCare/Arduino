@@ -1,6 +1,6 @@
 /*
  * NeckCare
- * Version: 1.0
+ * Version: 0.1.0-alpha.1
  * @author PeratX
  */
 
@@ -8,8 +8,7 @@
 #include <LiquidCrystal_I2C.h>
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
-#include <SPI.h>
-#include <SD.h>
+#include <EEPROM.h>
 #define PT_USE_TIMER
 #include <pt.h>
 
@@ -17,7 +16,10 @@ LiquidCrystal_I2C lcd(0x3F, 16, 4);
 SoftwareSerial bt(3, 2);//RX, TX
 
 const String PROG_NAME = "NeckCare";
-const String VERSION = "v1.0";
+const String VERSION = "0.1.0-a";
+
+const int ACTION_DEC = 0;//flex decreasing
+const int ACTION_INC = 1;//flex increasing
 
 const int flexSensorPin = A0;
 const int sdCardPin = 10;
@@ -26,8 +28,11 @@ const int buzzerPin = 5;
 
 static struct pt ledTask, mainTask;
 
-int timeNotMoveLimit = 5;//30s not moving
-int minMoveFlex = 30;
+const int DEFAULT_TIMEOUT = 5;
+const int DEFAULT_MIN_FLEX = 30;
+
+byte timeout;
+byte minFlex;
 
 long timeNotMoveStartFrom = 0;
 int lastFlex = 0;
@@ -40,6 +45,31 @@ void printToSecLine(String str){
 
 void printHeader(){
   lcd.print(PROG_NAME + " " + VERSION);
+}
+
+void resetConfig(){
+  EEPROM.write(0x00, 0);
+  loadConfig();
+}
+
+void loadConfig(){
+  //ATmega328p with 1KBytes EEPROM
+  byte initResult = EEPROM.read(0x00);
+  if(initResult == 0){
+    //first time start up
+    Serial.println("First time startup!");
+    EEPROM.write(0x00, 1);//loaded
+    EEPROM.write(0x01, DEFAULT_TIMEOUT);
+    EEPROM.write(0x02, DEFAULT_MIN_FLEX);
+  } else {
+    timeout = EEPROM.read(0x01);
+    minFlex = EEPROM.read(0x02);
+  }
+}
+
+void writeConfig(){
+  EEPROM.write(0x01, timeout);
+  EEPROM.write(0x02, minFlex);
 }
 
 String jsonData = "";
@@ -90,10 +120,10 @@ static int processFlex(struct pt *pt){
   PT_BEGIN(pt);
   while(1){
     int flex = analogRead(flexSensorPin);
-    if(abs(flex - lastFlex) >= minMoveFlex){
+    if(abs(flex - lastFlex) >= minFlex){
       timeNotMoveStartFrom = millis();
     }
-    if((millis() - timeNotMoveStartFrom) > (timeNotMoveLimit * 1000)){
+    if((millis() - timeNotMoveStartFrom) > (timeout * 1000)){
       digitalWrite(ledPin, HIGH);
     } else {
       digitalWrite(ledPin, LOW);
@@ -122,6 +152,7 @@ void setup(){
   printHeader();
   bt.begin(38400);
   while(!bt){;}
+  loadConfig();
   pinMode(ledPin, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
   Serial.println(PROG_NAME + " " + VERSION);
